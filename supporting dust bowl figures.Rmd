@@ -1,0 +1,1411 @@
+---
+title: "Supporting figures dust bowl"
+output: html_document
+date: "2024-05-24"
+---
+```{r}
+#Load libraries
+library(dplyr)
+library(ggplot2)
+library(plotrix)
+library(ggpubr)
+library(tidyr)
+library(tidyverse)
+library(sf)
+library(plantTracker)
+
+#Import climate data and remove na values
+setwd("~/Desktop/dust bowl/data")
+climate_data <- read.csv("daily_climate_data.csv") %>%
+  mutate(precip = as.numeric(as.character(precip))) %>%
+  filter(!is.na(precip))
+
+#Summarise the data to find means
+climate_data_summary <- climate_data %>%
+  group_by(year) %>%
+  summarise(
+    totalPrecip = sum(precip),
+    tmin = mean(min),
+    tminSE = sd(min) / sqrt(n()),
+    tmax = mean(max),
+    tmaxSE = sd(max) / sqrt(n())
+  )
+
+#Summarise the data for growing season (May-September) only
+growing_climate <- climate_data %>% filter(month >= 5 & month <= 9)
+
+climate_data_summary_growing<- growing_climate %>%
+  group_by(year) %>%
+  summarise(
+    totalPrecip = sum(precip),
+    tmin = mean(min),
+    tminSE = sd(min) / sqrt(n()),
+    tmax = mean(max),
+    tmaxSE = sd(max) / sqrt(n())
+  )
+```
+
+```{r}
+#Import data files 
+setwd("~/Desktop/dust bowl/data")
+cover_data <- read.csv("allrecords_cover.csv")
+density_data <- read.csv("allrecords_density.csv")
+quad_data <- read.csv("quad_info.csv") %>% rename("quad" = quadrat)
+inventory <- read.csv("quad_inventory.csv")
+annual_data<-read.csv("annuals_counts_v3.csv")
+species_list <- read.csv("species_list.csv")
+annual_data<-annual_data%>%
+  rename(Species="species")
+
+#Clean data to remove unwanted observations, rename variables and merge datasets. 
+cover_data <- left_join(cover_data, quad_data, by = "quad")
+unwanted <- c("ant hill", "dung", "depression", "unknown moss", "unknown", "unknown grass", "unknown perennial", "unknown forb","unknown annual")
+
+cover_data2<-cover_data%>%
+    filter(!Species %in% unwanted)%>%
+  rename(Abundance="Area")#%>%
+cover_data2 <- subset(cover_data2, select = c(-OBJECTID,-Clone,-Basal))
+
+density_data2<-density_data%>%
+    filter(!Species %in% unwanted)%>%
+  rename(Abundance="Stems")
+
+density_data2 <- subset(density_data2, select = c(-OBJECTID,-Seedling))
+
+annual_data2 <- subset(annual_data, !(Species %in% c("unknown", "unknown annual","unknown forb"))) %>%
+  rename(Abundance="count")
+
+# Assuming columns_to_remove is a vector of column names or indices to remove
+columns_to_remove <- c("x", "y")
+cover_data2 <- cover_data2[, -which(names(cover_data2) %in% columns_to_remove)]
+density_data2 <- density_data2[, -which(names(density_data2) %in% columns_to_remove)]
+
+#Merge datasets to make one big data frame
+all_data <- bind_rows(cover_data2, density_data2,annual_data2) %>%
+  mutate(
+    grazing_rates = case_when(
+      grepl("A", quad) | grepl("E", quad) ~ "3.2",
+      grepl("B", quad) | grepl("F", quad) ~ "1.9",
+      TRUE ~ "2.5"
+    ),pasture = substr(quad, 1, 1)
+  )
+all_data<-left_join(all_data,species_list,by="Species")
+```
+
+
+```{r}
+#Create precipitation figure
+mean(climate_data_summary_growing$totalPrecip)
+pptPlot<-ggplot(data=climate_data_summary_growing, aes(x=year, y=totalPrecip))+
+  ylab("Precipitation(mm)")+
+  geom_rect(aes(xmin=33.5, xmax=37.5,ymin=-Inf,ymax=Inf), color="lightgrey", fill='lightgrey', alpha= 0.1)+
+  geom_bar(stat="identity",fill="cornflowerblue")+
+  theme_classic()+
+  labs(color="Grazing rate",x="Year")+
+  geom_hline(yintercept=204.6643,lty=5)+
+  scale_x_continuous(n.breaks=13,breaks=c(32,33,34,35,36,37,38,39,40,41,42,43,44,45))+
+  scale_y_continuous(expand=c(0,0),limits=c(0,515))+
+  theme(axis.title.x =element_text( size=20),
+        axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=18),
+        axis.text.y = element_text(size=18),
+        legend.key.size = unit(.75, 'cm'),
+        legend.title = element_text(size=20), 
+        legend.text = element_text(size=18))+
+geom_text(label="Pre\n drought",
+        x=32.1,
+        y=485,
+        color="black",
+        size=4)+
+geom_text(label="During\n drought",
+        x=35,
+        y=485,
+        color="black",
+        size=4)+
+geom_text(label="Post\n drought",
+        x=41,
+        y=485,
+        color="black",
+        size=4)
+pptPlot
+```
+
+```{r}
+#create temperature figure 
+mean(climate_data_summary_growing$tmax)
+tempPlot <- ggplot(climate_data_summary_growing, aes(x = year)) +
+  geom_rect(aes(xmin=33.5, xmax=37.5,ymin=-Inf,ymax=Inf), color="lightgrey", fill='lightgrey', alpha= 0.1)+
+  geom_line(aes(y = tmin, color = "darkblue"),size=1) +
+  geom_line(aes(y = tmax, color = "firebrick3"),size=1 ) +
+  geom_point(aes(y = tmin, color = "darkblue"),size=2) +
+  geom_point(aes(y = tmax, color = "firebrick3"),size=2) +
+  scale_color_manual(name = "Temperature",values=c("darkblue","firebrick3"), labels = c("Minimum Temperature", "Maximum Temperature "))+ 
+  geom_errorbar(aes(ymin = tmin - tminSE, ymax = tmin + tminSE), color = "darkblue",width=.4) +
+  geom_errorbar(aes(ymin = tmax - tmaxSE, ymax = tmax + tmaxSE), color = "firebrick3",width=.4) +
+  geom_hline(yintercept=11.96077,lty=5,color="darkblue")+
+  geom_hline(yintercept=26.4831,lty=5,color="firebrick3")+
+  labs(x = "Year", y = "Temperature (\u00B0C)") +
+  scale_x_continuous(n.breaks=13)+
+  scale_y_continuous(limit=c(7,33))+
+  theme_classic()+
+  theme(axis.title.x =element_text( size=20),
+        axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=18),
+        axis.text.y = element_text(size=18),
+        legend.key.size = unit(.75, 'cm'),
+        legend.title = element_text(size=20), 
+        legend.text = element_text(size=18),
+        legend.position = c(.7,.5))+
+geom_text(label="Pre\n drought",
+        x=32.1,
+        y=31,
+        color="black",
+        size=4)+
+geom_text(label="During\n drought",
+        x=35,
+        y=31,
+        color="black",
+        size=4)+
+geom_text(label="Post\n drought",
+        x=41,
+        y=31,
+        color="black") 
+tempPlot
+```
+
+
+```{r}
+#Calculate richness by life history strategy  
+all_data2<-all_data%>%
+  filter(!Life_history=="both")
+
+quadRichness<-all_data2%>%
+  group_by(year,quad,Life_history,pasture)%>%
+  summarise_at(vars(Species),
+  (list(~n_distinct(Species))))
+
+quadRichness_LH<-quadRichness%>%
+  group_by(year,Life_history)%>%
+  summarise_at(vars(Species),
+               list(meanRichness=mean,
+                    SE=std.error))%>%
+  drop_na()
+
+quadRichnessMeans<-quadRichness%>%
+  group_by(year)%>%
+  summarise_at(vars(Species),
+               list(meanRichness=mean,
+                    SE=std.error))%>%
+  drop_na()
+
+pastureRichness<-all_data2%>%
+  group_by(year,Life_history,pasture)%>%
+  summarise_at(vars(Species),
+  (list(~n_distinct(Species))))
+
+pastureRichness_LH<-pastureRichness%>%
+  group_by(year,Life_history)%>%
+  summarise_at(vars(Species),
+               list(meanRichness=mean,
+                    SE=std.error))%>%
+  drop_na()
+
+pastureRichnessMeans<-pastureRichness%>%
+  group_by(year)%>%
+  summarise_at(vars(Species),
+               list(meanRichness=mean,
+                    SE=std.error))%>%
+  drop_na()
+
+totalRichness<-all_data2%>%
+  group_by(year,Life_history)%>%
+  summarise_at(vars(Species),
+  (list(~n_distinct(Species))))
+
+totalRichness_LH<-totalRichness%>%
+  group_by(year,Life_history)%>%
+  summarise_at(vars(Species),
+               list(meanRichness=mean))%>%
+  drop_na()
+
+totalRichnessMean<-totalRichness%>%
+  group_by(year)%>%
+  summarise_at(vars(Species),
+               list(meanRichness=mean))%>%
+  drop_na()
+```
+
+**Richness by PFG**
+
+```{r}
+#Calculate richness by Plant Functional group
+all_data%>%
+  drop_na(PFG)
+
+Quadrichness<-all_data%>%
+  group_by(year,quad,PFG,pasture)%>%
+  summarise_at(vars(Species),
+  (list(~n_distinct(Species))))
+Quadrichness
+
+quadLevelrichness_PFG<-Quadrichness%>%
+  group_by(year,PFG)%>%
+  summarise_at(vars(Species),
+               list(meanRichness=mean,
+                    SE=std.error))%>%
+  drop_na()
+
+Pasturerichness<-all_data%>%
+  group_by(year,Life_history,pasture)%>%
+  summarise_at(vars(Species),
+  (list(~n_distinct(Species))))
+Pasturerichness
+
+pastureLevelrichness_PFG<-Pasturerichness%>%
+  group_by(year,PFG)%>%
+  summarise_at(vars(Species),
+               list(meanRichness=mean,
+                    SE=std.error))%>%
+  drop_na()
+
+totalRichness<-all_data%>%
+  group_by(year,PFG)%>%
+  summarise_at(vars(Species),
+  (list(~n_distinct(Species))))%>%
+  drop_na()
+totalRichness
+```
+
+**Richness by PFG figures**
+
+```{r}
+Quadrichnessfig<-ggplot(quadLevelrichness.grazing,aes(year,meanRichness,color=Life_history)) +
+  geom_rect(aes(xmin=33, xmax=37,ymin=-Inf,ymax=Inf),color="lightgrey", fill='lightgrey', alpha= 0.1)+
+  geom_errorbar(aes(ymin=meanRichness-SE, ymax=meanRichness+SE), width=.4)+
+  geom_point(size=2) +
+  geom_line(size=1)+
+  scale_x_continuous(n.breaks=13)+
+  scale_y_continuous(expand=c(0,0), limits=c(0,12),breaks=c(2,4,6,8,10,12))+
+  #scale_color_manual(values=c("goldenrod2","palegreen4","steelblue3"), labels=c("Forbs","Grasses","Shrubs"))+
+  labs(x="year", y="Richness", color="Plant functional group")+
+  theme_classic()+
+   theme(axis.title.x =element_text( size=18),
+        axis.title.y = element_text(size=18),
+        axis.text.x = element_text(size=16,color="black"),
+        axis.text.y = element_text(size=16,color="black"))+
+geom_text(label="Pre\n drought",
+        x=32.1,
+        y=11,
+        color="black",
+        size=4)+
+geom_text(label="During\n drought",
+        x=35,
+        y=11,
+        color="black",
+        size=4)+
+geom_text(label="Post\n drought",
+        x=41,
+        y=11,
+        color="black",
+        size=4)
+Quadrichnessfig
+
+Pasturerichnessfig<-ggplot(pastureLevelrichness.grazing,aes(year,meanRichness,color=Life_history)) +
+  geom_rect(aes(xmin=33, xmax=37,ymin=-Inf,ymax=Inf),color="lightgrey", fill='lightgrey', alpha= 0.1)+
+  geom_errorbar(aes(ymin=meanRichness-SE, ymax=meanRichness+SE), width=.4)+
+  geom_point(size=2) +
+  geom_line(size=1)+
+ # scale_color_manual(values=c("goldenrod2","palegreen4","steelblue3"), labels=c("Forbs","Grasses","Shrubs"))+
+  scale_x_continuous(n.breaks=13)+
+ #scale_y_continuous(limits=c(0,12.5))+
+  labs(x="year", y="Richness", color="Plant functional group")+
+  theme_classic()+
+   theme(axis.title.x =element_text( size=18),
+        axis.title.y = element_text(size=18),
+        axis.text.x = element_text(size=16,color="black"),
+        axis.text.y = element_text(size=16,color="black"))
+Pasturerichnessfig
+
+totalRichnessfig<-ggplot(totalRichness,aes(year,Species,color=Life_history)) +
+  geom_rect(aes(xmin=33, xmax=37,ymin=-Inf,ymax=Inf),color="lightgrey", fill='lightgrey', alpha= 0.1)+
+ #geom_errorbar(aes(ymin=Species-SE, ymax=Species+SE), width=.4)+
+  geom_point(size=2) +
+  geom_line(size=1)+
+ # scale_color_manual(values=c("goldenrod2","palegreen4","steelblue3"), labels=c("Forbs","Grasses","Shrubs"))+
+  scale_x_continuous(n.breaks=13)+
+  #scale_y_continuous(limits=c(0,25))+
+  labs(x="year", y="Richness", color="Plant functional group")+
+  theme_classic()+
+   theme(axis.title.x =element_text( size=18),
+        axis.title.y = element_text(size=18),
+        axis.text.x = element_text(size=16,color="black"),
+        axis.text.y = element_text(size=16,color="black"))
+totalRichnessfig
+
+
+
+```
+
+```{r}
+jpeg("richness figure PFG ANNUALS.jpeg",
+     width=6,
+     height=12,
+     units="in",
+     res=300)
+richness_figure<-ggarrange(Quadrichnessfig+rremove("xlab")+rremove("ylab"),Pasturerichnessfig+rremove("xlab")+rremove("ylab"),totalRichnessfig+rremove("ylab")+rremove("xlab"),nrow=3,common.legend =T,labels = c("(a)","(b)","(c)"), vjust=.1)
+
+annotate_figure(richness_figure, left=text_grob("Richness",rot=90, size=20), bottom=text_grob("Year", size=20))
+dev.off()
+
+```
+
+
+```{r}
+
+```{r}
+library(lsmeans)
+library(multcomp)
+
+quadRichness$year<-as.character(quadRichness$year)
+quadRichness$grazing_rates<-as.factor(quadRichness$grazing_rates)
+
+model.quadRichness <- lm(Species~grazing_rates*year, data=quadRichness)
+# get (adjusted) means
+model_means.quadRichness <- emmeans(object = model.quadRichness,
+                       specs = ~ grazing_rates | year) 
+# add letters to each mean
+cld.quadRichness <- cld(object = model_means.quadRichness,
+                       adjust = "Tukey",
+                       Letters=letters,
+                       alpha=0.05)
+cld.quadRichness<-cld.quadRichness%>%
+  arrange(year,grazing_rates)
+```
+
+```{r}
+Pasturerichness$year<-as.character(Pasturerichness$year)
+Pasturerichness$grazing_rates<-as.factor(Pasturerichness$grazing_rates)
+
+model.pastureRichness <- lm(Species~grazing_rates*year, data=Pasturerichness)
+# get (adjusted) means
+model_means.pastureRichness <- emmeans(object = model.pastureRichness,
+                       specs = ~ grazing_rates | year) 
+# add letters to each mean
+cld.pastureRichness <- cld(object = model_means.pastureRichness,
+                       adjust = "Tukey",
+                       Letters=letters,
+                       alpha=0.05)
+cld.pastureRichness<-cld.pastureRichness%>%
+  arrange(year,grazing_rates)
+```
+
+
+**post drought richness SINGLE year**
+```{r}
+select_years <- all_data %>%
+  dplyr::filter(year %in% c("32", "37", "45"))
+select_years$year<-as.character(select_years$year)
+
+unique(select_years$year)
+
+PFGrichnessSelect<-select_years%>%
+  group_by(year,quad,PFG)%>%
+  summarise_at(vars(Species),
+  (list(~n_distinct(Species))))
+
+PFGrichness_meanSelect<-PFGrichnessSelect%>%
+  group_by(year,PFG)%>%
+  summarise_at(vars(Species),
+               list(mean=mean,
+                    SE=std.error))
+
+pfg_timePeriods_meanSelect<-ggplot(PFGrichness_meanSelect,mapping=aes(x=year,y=mean, fill=PFG))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_y_continuous(expand=c(0,0),limits=c(0,9))+
+  geom_errorbar(aes(ymin=mean-SE, ymax=mean+SE), width=.2,size=0.5,vjust = -.5,
+              position = position_dodge(width = 0.9)) +
+  scale_fill_manual(values=c("goldenrod2","palegreen4","steelblue3"), labels=c("Forbs","Grasses","Shrubs"))+
+  labs(x="Drought Period",y="Species Richness",fill="Plant Functional Group")+
+  theme_classic()+
+  theme(
+    axis.title.x =element_text( size=18),
+        axis.title.y = element_text(size=18),
+        axis.text.x = element_text(size=16,color="black"),
+        axis.text.y = element_text(size=16,color="black"))+
+  geom_text(aes(label = str_trim(cld.postrichnessSelect$.group),y = mean+SE + .3), position = position_dodge(width = 0.9), size=3.9)
+
+
+APrichnessSelect<-select_years%>%
+  group_by(year,quad,Life_history,Period)%>%
+  summarise_at(vars(Species),
+  (list(~n_distinct(Species))))%>%
+  filter(!Life_history=="both")
+
+APrichness_meanSelect<-APrichnessSelect%>%
+  group_by(year,Life_history)%>%
+  summarise_at(vars(Species),
+               list(mean=mean,
+                    SE=std.error))
+
+AP_timePeriods_meanSelect<-ggplot(APrichness_meanSelect,mapping=aes(x=year,y=mean, fill=Life_history))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_y_continuous(expand=c(0,0),limits=c(0,9))+
+  scale_fill_manual(values=c("indianred","cyan4"),labels=c("Annuals","Perennials"))+
+  #scale_x_discrete(limits=c(30,45),breaks=c(32,37,45))+
+  geom_errorbar(aes(ymin=mean-SE, ymax=mean+SE), width=.2,size=0.5,vjust = -.5,
+              position = position_dodge(width = .9)) +
+ # scale_fill_manual(values=c("goldenrod2","palegreen4","steelblue3"), labels=c("Forbs","Grasses","Shrubs"))+
+  labs(x="Drought Period",y="Species Richness",fill="Life History")+
+  theme_classic()+
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size=8),
+        legend.key.size = unit(.4, 'cm'), #change legend key size
+        legend.key.height = unit(.4, 'cm'), #change legend key height
+        legend.key.width = unit(.4, 'cm'))+
+  theme(axis.title.x =element_text( size=8),
+        axis.title.y = element_text(size=8),
+        axis.text.x = element_text(size=8,color="black"),
+        axis.text.y = element_text(size=8,color="black"))+
+  geom_text(aes(label = str_trim(cld.postrichnessAPselect$.group),y = mean+SE + .55), position = position_dodge(width = 0.9), size=2.5)
+
+```
+
+```{r}
+library(lsmeans)
+library(multcomp)
+
+PFGrichnessSelect$PFG<-as.factor(PFGrichnessSelect$PFG)
+PFGrichnessSelect$year<-as.factor(PFGrichnessSelect$year)
+
+model.postrichnessSelect <- lm(Species~PFG*year, data=PFGrichnessSelect)
+# get (adjusted) means
+model.postrichness_meansSelect <- emmeans(object = model.postrichnessSelect,
+                       specs = ~ PFG | year) 
+# add letters to each mean
+cld.postrichnessSelect <- cld(object = model.postrichness_meansSelect,
+                       adjust = "Tukey",
+                       Letters=letters,
+                       alpha=0.05)
+
+cld.postrichnessSelect<-cld.postrichnessSelect%>%
+  arrange(year,PFG)
+
+APrichnessSelect$year<-as.factor(APrichnessSelect$year)
+
+model.postrichnessAPSelect <- lm(Species~Life_history*year, data=APrichnessSelect)
+# get (adjusted) means
+model.postrichnessAP_meansSelect <- emmeans(object = model.postrichnessAPSelect,
+                       specs = ~ Life_history | year) 
+# add letters to each mean
+cld.postrichnessAPselect <- cld(object = model.postrichnessAP_meansSelect,
+                       adjust = "Tukey",
+                       Letters=letters,
+                       alpha=0.05)
+cld.postrichnessAPselect<-cld.postrichnessAPselect%>%
+  arrange(year,Life_history)
+```
+
+```{r}
+
+jpeg("quad level mean PFG w inset Single year.jpeg",
+    width=8,
+     height=6,
+     units="in",
+     res=300)
+
+figureInsetSelect<-ggdraw() +
+  draw_plot(pfg_timePeriods_meanSelect) +
+  draw_plot(AP_timePeriods_meanSelect, x = .1, y = .71, width = .4, height = .28)
+figureInsetSelect
+
+dev.off()
+
+```
+
+
+
+**Percent of forbs/grasses in each class**
+
+```{r}
+count_means_PFG <- countsdata %>%
+  group_by(year,Species, PFG) %>%
+  summarise_at(vars(count),
+               list(countMean = mean))
+
+breaks<-c(0.99,  49.50,  98.00, 146.50, 195.00, 243.50 ,   Inf)
+
+count_means_PFG$counts_categories <- cut(count_means_PFG$countMean, breaks = breaks,
+ labels =F )
+
+unique(count_means_PFG$counts_categories) 
+
+result <- count_means_PFG %>%
+  group_by(counts_categories, PFG) %>%
+  summarise(Count = n()) %>%
+  group_by(counts_categories) %>%
+  mutate(Percentage = (Count / sum(Count)) * 100)%>%
+  drop_na()
+
+result
+
+jpeg("basalclasspercent ANNUALS.jpeg",
+    width=6,
+     height=3,
+     units="in",
+     res=300)
+ggplot(result, aes(fill=PFG,x=counts_categories,y=Percentage))+
+       geom_bar(position="fill", stat="identity")+
+  labs(x="Basal area category",y="Percent", fill="Plant Functional Group")+
+  theme_classic()+
+  scale_y_continuous(expand=c(0,0))+
+  scale_x_continuous(breaks=c(1,2,3,4,5,6),
+ labels = c(.0003, .018, .037, .055, .073, .092))+
+  scale_fill_manual(values=c("goldenrod2","palegreen4","steelblue3"), labels=c("Forbs","Grasses","Shrubs"))+
+  theme(legend.key.size = unit(.5, 'cm'),
+        legend.title = element_text(size=12), 
+        legend.text = element_text(size=12))
+dev.off()
+```
+
+**EXTINCTION EXCTINCTION**
+```{r}
+counts_means <- countsdata %>%
+  group_by(year,Species, grazing_rates,PFG) %>%
+  summarise_at(vars(count),
+               list(meanCount = mean))
+
+counts_means<-counts_means%>%
+  group_by(Species,PFG)%>%
+  mutate(final_year=max(year))
+
+counts_means$death33 <- as.numeric(I(counts_means$final_year == 32))
+counts_means$death34 <- as.numeric(I(counts_means$final_year == 33))
+counts_means$death35 <- as.numeric(I(counts_means$final_year == 34))
+counts_means$death36 <- as.numeric(I(counts_means$final_year == 35))
+counts_means$death37 <- as.numeric(I(counts_means$final_year == 36))
+
+counts32<-counts_means%>%
+  filter(year==32)
+
+breaks <- seq(min(counts32$meanCount), max(counts32$meanCount), length.out = 7)
+breaks<- c(.99, 49.5,  98.0, 146.5, 195.0, 243.5, Inf)
+
+
+counts32$counts_categories <- cut(counts32$meanCount, breaks = breaks, labels=F)
+
+unique(counts32$counts_categories)
+counts32%>%
+  group_by(counts_categories,grazing_rates)%>%
+  count()
+
+species_in_year_32 <- unique(counts32$Species)
+
+proportionlost <- counts32 %>%
+  group_by(counts_categories,grazing_rates) %>%
+  summarize(proportion33 = mean(death33 == 1, na.rm = TRUE),
+            proportion34= mean(death34==1,na.rm = T),
+            proportion35= mean(death35==1,na.rm = T),
+            proportion36= mean(death36==1,na.rm = T),
+            proportion37= mean(death37==1,na.rm = T))
+
+proportionlost$counts_categories <- as.numeric(as.character(proportionlost$counts_categories))
+proportionlost_long <- gather(proportionlost, key = "year", value = "value", -counts_categories,-grazing_rates)
+
+```
+
+```{r}
+counts_means_long <- counts_means %>%
+  filter(year==32)%>%
+  group_by(Species,PFG)%>%
+  summarise_at(vars(death33,death34,death35,death36,death37),
+               list(mean))
+counts_means_long<-counts_means_long%>%
+  pivot_longer(cols = starts_with("death"), names_to = "death_year", values_to = "death_indicator") %>%
+  filter(death_indicator==1)
+
+counts_means_long<-counts_means_long%>%
+  group_by(PFG)%>%
+  summarise_at(vars(death_indicator),
+               list(sum))
+
+jpeg("# lost extinction.jpeg",
+    width=10,
+     height=6,
+     units="in",
+     res=300)
+ggplot(counts_means_long, aes(x = PFG, y = death_indicator,fill=PFG)) +
+  geom_bar(stat="identity") +
+  labs(x = "Plant functional group",
+       y = "# species extinct") +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_manual(values=c("goldenrod2","palegreen4","steelblue3"), labels=c("Forbs","Grasses","Shrubs"))+
+  theme_classic()
+dev.off()
+```
+
+```{r}
+propplottotal<-ggplot(proportionlost_long, aes(x = counts_categories, y = value, color = year)) +
+  geom_point(size = 2) +
+  geom_line(data = subset(proportionlost_long, grazing_rates == 1.9), size = 1.25,
+           aes(x = counts_categories, y = value, linetype = ifelse(year == "proportion33", "solid", 
+                                                                         ifelse(year == "proportion36", "dotted",
+                                                                                       ifelse(year=="proportoin36","twodash","dashed")))))+
+geom_line(data = subset(proportionlost_long, grazing_rates == 2.5), size = 1.25,
+           aes(x = counts_categories, y = value, linetype = ifelse(year == "proportion36`", "solid", 
+                                                                         ifelse(year == "proportion35", "dotted",
+                                                                                ifelse(year=="proportion34", "longdash","dashed")))))+
+  geom_line(data = subset(proportionlost_long, grazing_rates == 3.2), size = 1.25,
+           aes(x = counts_categories, y = value, linetype = ifelse(year == "proportion33"|year=="proportion36", "solid",
+                                                                                ifelse(year=="proportion34", "longdash","dashed"))))+
+ scale_x_continuous(breaks = c(1, 2, 3, 4, 5, 6), 
+                     labels=c("1" , "49.50" , "98.00" ,"146.50", "195.00", "243.50")) +
+  scale_color_manual(values = c("#293353", "#52854C", "#D16103","#C4961A","#CD77D5","#2FBBD6"), 
+                     labels = c("1933","1934", "1935","1936", "1937", "1945")) +
+  labs(color = "Year",
+       x = "Counts Category",
+       y = "Proportion Lost") +
+  facet_wrap(~ grazing_rates, scales = "free",ncol=1) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top") +
+  theme_classic()+
+  scale_linetype(guide="none")
+propplottotal
+```
+
+```{r}
+counts32
+
+initial_count_model33 <- glm(death33 ~ meanCount, data = counts32, family = "binomial")
+initial_count_model34 <- glm(death34 ~ meanCount, data = counts32, family = "binomial")
+initial_count_model35 <- glm(death35 ~ meanCount, data = counts32, family = "binomial")
+initial_count_model36 <- glm(death36 ~ meanCount, data = counts32, family = "binomial")
+initial_count_model37 <- glm(death37 ~ meanCount, data = counts32, family = "binomial")
+```
+
+```{r}
+initial_abundance_seq_count <- seq(min(counts32$meanCount), max(counts32$meanCount), length.out = 100)
+
+# Calculate predicted probabilities for each value in the sequence
+predicted_prob_count33 <- predict(initial_count_model33, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count34 <- predict(initial_count_model34, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count35 <- predict(initial_count_model35, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count36 <- predict(initial_count_model36, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count37 <- predict(initial_count_model37, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+
+
+# Create a data frame for the plot
+plot_data_count33<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count33)
+plot_data_count33$year<-"33"
+plot_data_count34<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count34)
+plot_data_count34$year<-"34"
+plot_data_count35<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count35)
+plot_data_count35$year<-"35"
+plot_data_count36<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count36)
+plot_data_count36$year<-"36"
+plot_data_count37<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count37)
+plot_data_count37$year<-"37"
+
+
+plot_data_count<-rbind(plot_data_count33,plot_data_count34,plot_data_count35,plot_data_count36,plot_data_count37)
+
+```
+
+```{r}
+regplottotal<-ggplot(plot_data_count, aes(x = abundance, y = PredictedProbability, color=year)) +
+  geom_line(size=1.5)+
+  geom_line(aes(x = abundance, y = PredictedProbability, linetype = ifelse(year=="35","solid", "dashed")),size=1.5)+
+  scale_x_continuous(expand=c(0,0),limits=c(0,100))+ 
+  scale_color_manual(values = c("#293353", "#52854C", "#D16103","#C4961A","#CD77D5","#2FBBD6"), 
+                     labels = c("1933","1934", "1935","1936", "1937", "1944")) +
+  labs(x = "Initial Abundance (cover)",
+       y = "Predicted Probability of local extinction") +
+  scale_linetype(guide="none")+
+  theme_classic()
+regplottotal
+```
+
+```{r}
+jpeg("extinction extinction COUNTS.jpeg",
+    width=10,
+     height=6,
+     units="in",
+     res=300)
+ggarrange(propplottotal, regplottotal, common.legend = T, labels=c("(a)","(b)"), widths=c(.6,1))
+dev.off()
+```
+
+```{r}
+extinctiondata <- countsdata %>%
+  filter(!Life_history=="both")%>%
+  group_by(year,Species,PFG,Life_history) %>%
+  summarise_at(vars(count),
+               list(meanCount = mean))
+
+extinctiondata<-extinctiondata%>%
+  group_by(Species,PFG,Life_history)%>%
+  mutate(final_year=max(year))%>%
+  filter(year==32)
+
+extinctiondata<-extinctiondata%>%
+  mutate(extinction = ifelse(final_year < 37, 1, 0))
+
+extinctionlm<-lm(extinction~PFG, data=extinctiondata, family="binomial")
+summary(extinctionlm)
+```
+
+**Drought extinction**
+
+```{r}
+countsdata
+count33_37<-countsdata%>%
+  group_by(year,quad,Species,PFG,grazing_rates)%>%
+  summarise_at(vars(count),
+               list(count=sum))
+count33_37<-count33_37%>%
+  group_by(year,Species,PFG,grazing_rates)%>%
+  summarise_at(vars(count),
+               list(meanCount=mean))
+  
+
+count33_37<-count33_37%>%
+  filter(year<=37)%>%
+  group_by(Species)%>%
+  mutate(final_year=max(year))
+
+breaks <- seq(min(count33_37$meanCount), max(count33_37$meanCount), length.out = 7)
+
+breaks<-c(.99, 49.5, 98, 146.5, 195, 243, Inf) 
+
+count33_37$counts_categories <- cut(count33_37$meanCount, breaks = breaks, labels=F)
+
+
+count33_37<-count33_37%>%
+  mutate(extinct_in_33=ifelse(final_year==32,1,0))%>%
+  mutate(extinct_in_34=ifelse(final_year==33,1,0))%>%
+  mutate(extinct_in_35=ifelse(final_year==34,1,0))%>%
+  mutate(extinct_in_36=ifelse(final_year==35,1,0))%>%
+  mutate(extinct_in_37=ifelse(final_year==36,1,0))
+
+count33_37<-count33_37%>%
+  filter(year==32)
+
+
+
+unique(count33_37$counts_categories)
+count33_37%>%
+  group_by(counts_categories,grazing_rates)%>%
+  count()
+
+
+proportionlost <- count33_37 %>%
+  group_by(counts_categories,grazing_rates) %>%
+  summarize(proportion33 = mean(extinct_in_33 == 1, na.rm = TRUE),
+            proportion34= mean(extinct_in_34==1,na.rm = T),
+            proportion35= mean(extinct_in_35==1,na.rm = T),
+            proportion36= mean(extinct_in_36==1,na.rm = T),
+            proportion37= mean(extinct_in_37==1,na.rm = T))
+
+
+proportionlost$counts_categories <- as.numeric(as.character(proportionlost$counts_categories))
+proportionlost_long <- gather(proportionlost, key = "year", value = "value", -counts_categories,-grazing_rates)
+
+
+```
+
+```{r}
+counts3337_means_long <- count33_37 %>%
+  filter(year==32)%>%
+  group_by(Species,PFG)%>%
+  summarise_at(vars(extinct_in_33,extinct_in_34,extinct_in_35,extinct_in_36,extinct_in_37),
+               list(mean))
+
+counts3337_means_long<-counts3337_means_long%>%
+  pivot_longer(cols = starts_with("extinct_in"), names_to = "death_year", values_to = "death_indicator") %>%
+  filter(death_indicator==1)
+counts3337_means_long<-counts3337_means_long%>%
+  group_by(PFG)%>%
+  summarise_at(vars(death_indicator),
+               list(sum))
+
+jpeg("# species lost for drought extinction.jpeg",
+    width=10,
+     height=6,
+     units="in",
+     res=300)
+ggplot(counts3337_means_long, aes(x = PFG, y = death_indicator,fill=PFG)) +
+  geom_bar(stat="identity") +
+  labs(x = "Plant functional group",
+       y = "# species lost that didnt return until post drought") +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_manual(values=c("goldenrod2","palegreen4","steelblue3"), labels=c("Forbs","Grasses","Shrubs"))+
+  theme_classic()
+dev.off()
+
+```
+
+```{r}
+
+droughtprop<-ggplot(proportionlost_long, aes(x = counts_categories, y = value, color = year)) +
+  geom_point(size = 2) +
+  geom_line(data = subset(proportionlost_long,grazing_rates=1.9), size = 1.25, 
+           aes(x = counts_categories, y = value, linetype = ifelse(year == "proportion33", "solid",
+                                                                   ifelse(year=="proportion35", "dotted","dashed")))) +
+   geom_line(data = subset(proportionlost_long,grazing_rates==2.5), size = 1.25, 
+           aes(x = counts_categories, y = value, linetype = ifelse(year == "proportion34", "solid","dashed")))+
+  geom_line(data = subset(proportionlost_long,grazing_rates=3.2), size = 1.25, 
+           aes(x = counts_categories, y = value, linetype = ifelse(year == "proportion35", "solid",
+                                                                   ifelse(year=="proportion36", "dotted","dashed"))))+
+ scale_x_continuous(breaks = c(1, 2, 3, 4, 5, 6))+
+  scale_color_manual(values = c("#293353", "#52854C", "#D16103","#C4961A","#CD77D5","#2FBBD6"), 
+                     labels = c("1933","1934", "1935","1936", "1937", "1945")) +
+  labs(color = "Year",
+       x = "Counts Category",
+       y = "Proportion Lost") +
+  facet_wrap(~ grazing_rates, scales = "free",ncol=1) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top") +
+  theme_classic()+
+  scale_linetype(guide="none")
+droughtprop
+```
+
+```{r}
+count33_37
+
+initial_count_model33 <- glm(extinct_in_33 ~ meanCount, data = count33_37, family = "binomial")
+initial_count_model34 <- glm(extinct_in_34 ~ meanCount, data = count33_37, family = "binomial")
+initial_count_model35 <- glm(extinct_in_35 ~ meanCount, data = count33_37, family = "binomial")
+initial_count_model36 <- glm(extinct_in_36 ~ meanCount, data = count33_37, family = "binomial")
+initial_count_model37 <- glm(extinct_in_37 ~ meanCount, data = count33_37, family = "binomial")
+```
+
+```{r}
+initial_abundance_seq_count <- seq(min(count33_37$meanCount), max(count33_37$meanCount), length.out = 100)
+
+# Calculate predicted probabilities for each value in the sequence
+predicted_prob_count33 <- predict(initial_count_model33, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count34 <- predict(initial_count_model34, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count35 <- predict(initial_count_model35, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count36 <- predict(initial_count_model36, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count37 <- predict(initial_count_model37, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+
+
+# Create a data frame for the plot
+plot_data_count33<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count33)
+plot_data_count33$year<-"33"
+plot_data_count34<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count34)
+plot_data_count34$year<-"34"
+plot_data_count35<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count35)
+plot_data_count35$year<-"35"
+plot_data_count36<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count36)
+plot_data_count36$year<-"36"
+plot_data_count37<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = predicted_prob_count37)
+plot_data_count37$year<-"37"
+
+
+plot_data_count<-rbind(plot_data_count33,plot_data_count34,plot_data_count35,plot_data_count36,plot_data_count37)
+
+```
+
+```{r}
+droughtextinctionreg<-ggplot(plot_data_count, aes(x = abundance, y = PredictedProbability, color=year)) +
+  geom_line(size=1.5)+
+  #geom_line(aes(x = abundance, y = PredictedProbability, linetype = ifelse(year=="33"|year=="34","solid", "dashed")),size=1.5)+
+  scale_x_continuous(expand=c(0,0),limits=c(0,150))+ 
+  scale_color_manual(values = c("#293353", "#52854C", "#D16103","#C4961A","#CD77D5"), 
+                     labels = c("1933","1934", "1935","1936", "1937")) +
+  labs(x = "Initial Abundance (cover)",
+       y = "Predicted Probability of local extinction") +
+  scale_linetype(guide="none")+
+  theme_classic()
+droughtextinctionreg
+```
+
+```{r}
+jpeg("drought extinction.jpeg",
+    width=10,
+     height=6,
+     units="in",
+     res=300)
+ggarrange(droughtprop, droughtextinctionreg, common.legend = T, labels=c("(a)","(b)"), widths=c(.6,1))
+dev.off()
+```
+
+```{r}
+DRextinctiondata <- countsdata %>%
+  filter(!Life_history=="both")%>%
+  group_by(year,Species,PFG,Life_history) %>%
+  summarise_at(vars(count),
+               list(meanCount = mean))%>%
+  filter(year<=37)
+
+DRextinctiondata<-DRextinctiondata%>%
+  group_by(Species,PFG,Life_history)%>%
+  mutate(final_year=max(year))%>%
+  filter(year==32)
+
+DRextinctiondata<-DRextinctiondata%>%
+  mutate(extinction = ifelse(final_year < 37, 1, 0))
+
+extinctionlm<-lm(extinction~Life_history, data=DRextinctiondata, family="binomial")
+summary(extinctionlm)
+```
+
+```{r}
+**establishment after drought**
+
+```{r}
+rm(establishment)
+establishment <- countsdata %>%
+  group_by(Species,PFG,Life_history) %>%
+  summarize(First_year = min(year))%>%
+  filter(First_year>=38)
+
+establishment%>%
+  group_by(PFG,Life_history)%>%
+  summarise(count=n())
+  
+```
+
+```{r}
+library(dplyr)
+tracked<-tracked%>%
+  dplyr::select()
+
+tracked<-merge(tracked,species_list,by="Species")
+
+morebasal<-tracked%>%
+  group_by(Year,Species,Quad,PFG,Life_history)%>%
+  summarise_at(vars(basalArea_genet),
+               list(sum=sum)) %>%
+  drop_na()%>%
+  filter(!Life_history=="both")
+
+morebasal<-transform(morebasal, Life=paste(Life_history, PFG))
+
+morebasalQuad<-morebasal%>%
+  group_by(Year,Life)%>%
+  summarise_at(vars(sum),
+               list(mean=mean))
+ 
+
+  morebasalQuad<-transform(morebasalQuad, Life=paste(Life_history, PFG))
+
+
+```
+
+```{r}
+ggplot(morebasalQuad,aes(x=Year,y=mean,color=Life))+
+  geom_line()+
+  geom_point()
+```
+
+```{r}
+morecounts<-countsdata%>%
+  group_by(year,Species,quad,PFG,Life_history)%>%
+  summarise_at(vars(count),
+               list(sum=sum)) %>%
+  drop_na()%>%
+  filter(!Life_history=="both")
+
+morecounts<-transform(morecounts, Life=paste(Life_history, PFG))
+
+morecounts<-morecounts%>%
+  group_by(year,Life)%>%
+  summarise_at(vars(sum),
+               list(mean=mean))
+```
+
+```{r}
+ggplot(morecounts,aes(x=year,y=mean,color=Life))+
+  geom_line()+
+  geom_point()
+```
+
+```{r}
+counts32<-counts32%>%
+  filter(!Life_history=="both")
+  
+model <- glm(present_in_year_37 ~ meanCount + Life_history, data = counts32, family = "binomial")
+summary(model)
+
+exp(-0.5363)
+
+
+```
+
+**Local extinction stuff COUNTS-POST DROUGHT**
+
+```{r}
+counts_means <- countsdata %>%
+  group_by(year,Species, grazing_rates) %>%
+  summarise_at(vars(count),
+               list(meanCount = mean))
+
+counts32 <- subset(counts_means, year == 32)
+unique(counts32$Species)
+
+breaks <- seq(min(counts32$meanCount), max(counts32$meanCount), length.out = 7)
+breaks<- c(.99, 49.5,  98.0, 146.5, 195.0, 243.5, Inf)
+
+counts32$counts_categories <- cut(counts32$meanCount, breaks = breaks, labels=F)
+
+unique(counts32$counts_categories)
+counts32%>%
+  group_by(counts_categories,grazing_rates)%>%
+  count()
+
+species_in_year_32 <- unique(counts32$Species)
+
+year_38_species <- countsdata %>%
+  filter(year == 38)
+year_42_species <- countsdata %>%
+  filter(year == 42)
+year_45_species <- countsdata %>%
+  filter(year == 45)
+
+
+# Create a new column indicating presence in year 37
+counts32 <- counts32 %>%
+  mutate(present_in_year_38 = as.numeric(Species %in% year_38_species$Species))%>%
+  mutate(present_in_year_42 = as.numeric(Species %in% year_42_species$Species))%>%
+  mutate(present_in_year_45 = as.numeric(Species %in% year_45_species$Species))
+
+proportionlost <- counts32 %>%
+  group_by(counts_categories,grazing_rates) %>%
+  summarize(proportion38 = mean(present_in_year_38 == 0, na.rm = TRUE),
+            proportion42= mean(present_in_year_42==0,na.rm = T),
+            proportion45= mean(present_in_year_45==0,na.rm = T))
+
+2$counts_categories <- as.numeric(as.character(proportionlost$counts_categories))
+proportionlost_long <- gather(proportionlost, key = "year", value = "value", -counts_categories,-grazing_rates)
+```
+
+```{r}
+propLostfigCOUNTS<-ggplot(proportionlost_long, aes(x = counts_categories, y = value, color = year)) +
+  geom_point(size = 2) +
+  geom_line(data = subset(proportionlost_long, grazing_rates == 1.9), size = 1.25, 
+            aes(x = counts_categories, y = value)) +
+  geom_line(data = subset(proportionlost_long, grazing_rates == 2.5), size = 1.25,
+           aes(x = counts_categories, y = value, linetype = ifelse(year == "proportion45", "solid", 
+                                                                   ifelse(year=="proportion42","dotted","dashed"))))+
+  geom_line(data = subset(proportionlost_long, grazing_rates == 3.2), size = 1.25, 
+           aes(x = counts_categories, y = value, linetype = ifelse(year == "proportion38", "solid", "dashed")))+ 
+  scale_x_continuous(breaks = c(1, 2, 3, 4, 5, 6), 
+                     labels=c("1" , "49.5" , "98" ,"146.5", "195", "243.5")) +
+  scale_color_manual(values = c("indianred", "darkolivegreen3","deepskyblue3"), 
+                     labels = c("1938","1942", "1945")) +
+  labs(color = "Year",
+       x = "Counts Category",
+       y = "Proportion Lost") +
+  facet_wrap(~ grazing_rates, scales = "free",ncol=1) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top") +
+  theme_classic()+
+  scale_linetype(guide="none")
+ propLostfigCOUNTS
+
+```
+
+```{r}
+initial_counts<-countsdata%>%
+  group_by(year,quad,Species)%>%
+  summarise_at(vars(count),
+               list(sum=sum))
+
+initial_counts<-initial_counts%>%
+  group_by(year,Species)%>%
+  summarise_at(vars(sum),
+               list(meanCount=mean))
+
+year_32_speciescount <- initial_counts %>%
+  filter(year == 32)
+
+# Filter for year 37
+year_38_speciescount <- initial_counts %>%
+  filter(year == 38)
+
+year_42_speciescount <- initial_counts %>%
+  filter(year == 42)
+
+year_45_speciescount <- initial_counts %>%
+  filter(year == 45)
+
+# Create a new column indicating presence in year 33,35,37.42,45
+year_32_speciescount <- year_32_speciescount %>%
+  mutate(
+    present_in_year_38 = as.numeric(Species %in% year_38_speciescount$Species ),
+    present_in_year_42 = as.numeric(Species %in% year_42_speciescount$Species ),
+    present_in_year_45 = as.numeric(Species %in% year_45_speciescount$Species )
+  )
+
+
+initial_count_model38 <- glm(present_in_year_38 ~ meanCount, data = year_32_speciescount, family = "binomial")
+initial_count_model42 <- glm(present_in_year_42 ~ meanCount, data = year_32_speciescount, family = "binomial")
+initial_count_model45 <- glm(present_in_year_45 ~ meanCount, data = year_32_speciescount, family = "binomial")
+```
+
+```{r}
+initial_abundance_seq_count <- seq(min(initial_counts$meanCount), max(initial_counts$meanCount), length.out = 1000)
+
+# Calculate predicted probabilities for each value in the sequence
+predicted_prob_count38 <- predict(initial_count_model38, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count42 <- predict(initial_count_model42, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+predicted_prob_count45 <- predict(initial_count_model45, newdata = data.frame(meanCount = initial_abundance_seq_count), type = "response")
+
+# Create a data frame for the plot
+plot_data_count38<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = 1-predicted_prob_count38)
+plot_data_count38$year<-"38"
+plot_data_count42<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = 1-predicted_prob_count42)
+plot_data_count42$year<-"42"
+plot_data_count45<- data.frame(abundance = initial_abundance_seq_count, PredictedProbability = 1-predicted_prob_count45)
+plot_data_count45$year<-"45"
+
+plot_data_count<-rbind(plot_data_count38,plot_data_count42,plot_data_count45)
+
+```
+
+```{r}
+# Create the logistic regression plot
+countfig<-ggplot(plot_data_count, aes(x = abundance, y = PredictedProbability, color=year)) +
+  #scale_y_continuous(expand=c(0,0),limits=c(0,.5))+
+  scale_x_continuous(expand=c(0,0),limits=c(0,125))+ 
+   scale_color_manual(values = c("indianred", "darkolivegreen3","deepskyblue3"), 
+                     labels = c("1938","1942", "1945")) +
+  geom_line(size=1.5) +
+  labs(x = "Initial Abundance (Counts)",
+       y = "Predicted Probability of local extinction") +
+  theme_classic()
+countfig
+```
+
+```{r}
+jpeg("extinction post drought.jpeg",
+    width=10,
+     height=6,
+     units="in",
+     res=300)
+ggarrange(propLostfigCOUNTS,countfig,common.legend = T, widths=c(.6,1))
+dev.off()
+```
+
+```{r}
+
+disappeardata <- counts32[, -which(names(counts32) == "present_in_year_45")]
+
+disappeardata <- disappeardata %>%
+  group_by(year,Species)%>%
+  rowwise() %>%
+  mutate(disappears = ifelse(any(c_across(starts_with("present_in_year_")) == 0), 1, 0))
+
+disappeardata<-merge(disappeardata,species_list,by="Species")
+  
+PFGdisappeardata<-disappeardata%>%
+  group_by(Species,PFG)%>%
+  summarise_at(vars(disappears),
+               list(mean=mean))
+
+PFGdisappearance<-PFGdisappeardata%>%
+  group_by(PFG)%>%
+  summarise_at(vars( mean),
+               list(sum=sum))
+
+
+#jpeg("# species disappear.jpeg",
+ #   width=10,
+#     height=6,
+ #    units="in",
+  #   res=300)
+ggplot(PFGdisappearance, aes(x = PFG, y = sum,fill=PFG)) +
+  geom_bar(stat="identity") +
+  labs(x = "Plant functional group",
+       y = "# species extinct") +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_manual(values=c("goldenrod2","palegreen4","steelblue3"), labels=c("Forbs","Grasses","Shrubs"))+
+  theme_classic()
+#dev.off()
+               
+```
+
+setwd("~/Desktop/Legacy Project/cali annuals/npp geotifs for CALI annuals") 
+
+
+```{r}
+library(VFS)
+setwd("~/Desktop/ghcnd states")
+library(dplyr)
+
+data<-read.dly
+
+# Get a list of .dly files in the directory
+file_list <- list.files(pattern = "\\.dly$")
+
+dataframes<-list()
+
+# Iterate over each file
+for (file in file_list) {
+  # Read the file into R
+  data <- read.dly(file) 
+  # Adjust parameters as needed
+  
+  # Extract the site name from the file name
+  site <- substr(file, 1, 11)
+  
+  # Add the site column
+  data <- mutate(data, site = site)
+  data<-data%>%
+    select(site, YEAR, MONTH, DAY, PRCP.VALUE)
+  
+  # Append the dataframe to the list
+  dataframes[[file]] <- data
+}
+
+
+strmerged_df <- bind_rows(dataframes)%>%
+  rename(Site=site)
+
+
+saveRDS(strmerged_df,file="strmerged_df.rds")
+```
+
+```{r}
+setwd("~/Desktop")
+site_inventory<-read.csv("ghcnd-inventory 2.csv")
+site_inventory<-unique(site_inventory) %>%
+  filter(substr(Site, 1, 2) == "US")
+
+site_inventory$lat<-as.numeric(site_inventory$lat)
+site_inventory$lat <- abs(site_inventory$lat)
+site_inventory$long <- -abs(site_inventory$long)
+site_inventory$Site <- gsub(" ", "", site_inventory$Site )
+
+setwd("~/OneDrive - Montana State University/rds")
+mergeddf<-readRDS("strmerged_df.rds")
+
+setwd("~/Desktop")
+mergeddf<-readRDS("strmerged_df.rds")
+```
+
+
+
+
+```{r}
+data1938<-mergeddf%>%
+  filter(YEAR<=1938)
+
+min(mergeddf$YEAR)
+
+mergeddf<-mergeddf%>%
+  drop_na(PRCP.VALUE)
+
+ghcnDATA<-merge(mergeddf,site_inventory,by="Site")
+
+ghcnDATA<-ghcnDATA%>%
+  group_by(long,lat)%>%
+  mutate(MAP=mean(PRCP.VALUE))
+
+ghcnDATA<-ghcnDATA%>%
+  mutate(anomaly=PRCP.VALUE-MAP)
+
+ghcnMEANS<-ghcnDATA%>%
+  group_by(long,lat,YEAR)%>%
+  summarise_at(vars(anomaly),
+               list(meanANOMALY=mean))
+
+ghcnDUST<-ghcnMEANS%>%
+  filter(YEAR<=2000)%>%
+  group_by(long,lat)%>%
+  summarise_at(vars(dustANOMALY=mean))
+
+```
+
+
+```{r}
+library(rgdal)
+#Create states outline data
+setwd("~/OneDrive - Montana State University/rds")
+us<-readRDS("gadm36_USA_1_sp.rds")
+us<-getData("GADM", country='USA', level=1,download=TRUE)
+states_all_sites <- us[us$NAME_1 %in% c('California','New Mexico','Arizona','Utah',
+                                        'Arizona','Colorado','Washington','Wyoming',
+                                        'Idaho','Oregon','Idaho','Montana','Texas',
+                                        'North Dakota','South Dakota','Nebraska',
+                                        'Oklahoma','Kansas',"Minnesota","Iowa","Missouri","Arkansas","Louisiana","Nevada"),]
+
+aea.proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
+states_all_sites <- spTransform(states_all_sites, CRS(aea.proj))
+
+```
+
+```{r}
+#Transform data from df to raster
+r_obj <- raster(xmn=-125, xmx=-88, ymn=25, ymx=49, resolution=c(0.01347473, 0.01347473)) 
+  
+
+ghcnraster<- rasterize(x=ghcnMEANS[, 1:2], # lon-lat data
+                    y=r_obj, # raster object
+                    field=ghcnMEANS[,4 ], # vals to fill raster with
+                    ) # aggregate function
+
+proj4string(ghcnraster) <- CRS("+proj=longlat")
+ghcnraster2<-projectRaster(ghcnraster, crs=aea.proj)
+ghcnrasterdf<-rasterToPoints(ghcnraster2)
+ghcnrasterdf<-as.data.frame(ghcnrasterdf)
+
+```
+
+```{r}
+library(gstat) 
+library(terra)
+library(sp) 
+
+ghcnMEANS<-ghcnMEANS%>%
+  rename(x=long,
+         y=lat)
+
+coordinates(ghcnrasterdf)<-c("x","y")
+
+grid <- spsample(states_all_sites, type = "regular")
+
+crs(grid)<-crs(aea.proj)
+
+library(st)
+idw_result <- idw(meanANOMALY ~ 1, locations = ghcnMEANS, newdata = grid)
+idw<-as.data.frame(idw_result)
+
+
+```
+
+```{r}
+#Transform data from df to raster
+r_obj <- raster(xmn=-125, xmx=-88, ymn=25, ymx=49, resolution=c(0.01347473, 0.01347473)) 
+  
+
+ghcnraster<- rasterize(x=idw[, 1:2], # lon-lat data
+                    y=r_obj, # raster object
+                    field=idw[,3 ], # vals to fill raster with
+                    ) # aggregate function
+
+proj4string(ghcnraster) <- CRS("+proj=longlat")
+ghcnraster2<-projectRaster(ghcnraster, crs=aea.proj)
+ghcnrasterdf<-rasterToPoints(ghcnraster2)
+ghcnrasterdf<-as.data.frame(ghcnrasterdf)
+as.data.frame(states_all_sites)
+```
+
+
+```{r}
+library(ggspatial)
+ggplot() + 
+  geom_raster(idw, mapping=aes(x=x1,y=x2,fill=var1.pred))+
+  geom_polygon(data=states_all_sites, mapping=aes(x = long, y = lat, group=group),
+               color = "black", linewidth = 0.1,fill=NA)+
+  scale_fill_distiller(palette="Spectral",direction=1,limits=c(-2,2 ),oob=scales::squish)
+```
+
+
+
+```
+
+
+

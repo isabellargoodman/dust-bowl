@@ -1,0 +1,57 @@
+---
+title: "PlantTracker"
+output: html_document
+date: "2024-05-30"
+---
+
+```{r setup, include=FALSE}
+#Import needed datasets and clean
+
+setwd("~/Desktop/dust bowl/data")
+species_list <- read.csv("species_list.csv")
+cover_data <- read.csv("allrecords_cover.csv")
+cover_data<-cover_data%>%
+  dplyr::select(!Clone & !Area & !Basal & !OBJECTID)
+
+density_data <- read.csv("allrecords_density.csv")
+density_data<-density_data%>%
+  dplyr::select(!OBJECTID & !Stems & !Seedling)
+quad_data <- read.csv("quad_info.csv") %>% rename("quad" = quadrat)
+inventory <- read.csv("quad_inventory.csv")
+
+data<-rbind(density_data, cover_data)%>%
+  rename(Quad="quad",
+         Year="year")%>%
+  mutate(site="LRRL")
+
+```
+
+```{r}
+#Convert to spatial polygon object of negligable area 
+
+spatialdata<-st_as_sf(data,coords=c("x","y")) 
+spatialdata <- st_buffer(x = spatialdata[st_is(x = spatialdata, type = "POINT"),], dist = .001) 
+spatialdata<-spatialdata[!grepl("F6", spatialdata$Quad),] #remove last quadrant to avoid errors
+
+inventory<-as.list(inventory) #Create inventory list 
+inventory<-lapply(inventory, function(x) x[!is.na(x)]) #remove NA values
+
+```
+
+```{r}
+checkDat(dat=spatialdata, inv = inventory, species = "Species", site = "Site", quad = "Quad",
+  year = "Year", geometry = "geometry", reformatDat = FALSE)
+
+trackedfunction<-function(x){
+  trackeddata<-data.frame(trackSpp(dat=x,inv=inventory, dorm=1,clonal=TRUE,
+         buff=.05, buffGenet = .005, aggByGenet = TRUE, printMessages = TRUE))
+} #Create function for tracking data
+
+split_data<-split(spatialdata,f=spatialdata$Quad) #Split data by quadrant 
+
+df<-lapply(split_data,trackedfunction) # apply function to every df in the split_poly list 
+ 
+tracked<-bind_rows(df) #bind rows of each DF to create one large df with all tracked data 
+
+```
+
