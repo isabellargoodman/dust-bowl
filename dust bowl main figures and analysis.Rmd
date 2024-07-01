@@ -3,6 +3,7 @@ title: "dust bowls stuff with ANNUALS"
 output: html_document
 date: "2024-01-12"
 ---
+Importing Data
 ```{r}
 #Load libraries
 library(dplyr)
@@ -46,6 +47,11 @@ climate_data_summary_growing<- growing_climate %>%
     tmax = mean(max),
     tmaxSE = sd(max) / sqrt(n())
   )
+
+climate_temp<-climate_data_summary_growing%>%
+  select(year, tmin, tmax,tminSE,tmaxSE)
+
+  
 ```
 
 ```{r}
@@ -99,23 +105,32 @@ all_data<-left_join(all_data,species_list,by="Species")
 ```{r}
 # Calculate mean values
 mean_ppt <- mean(climate_data_summary_growing$totalPrecip)
-mean_temp <- mean(climate_data_summary_growing$tmax)
+mean_tmin <- mean(climate_data_summary_growing$tmin)
+mean_tmax<-mean(climate_data_summary_growing$tmax)
 
 # Create the combined temperature and precipitation plot (Figure 1b)
+library(ggplot2)
+
 combined_plot <- ggplot(climate_data_summary_growing, aes(x = year)) +
-  geom_rect(aes(xmin=33.5, xmax=37.5,ymin=-Inf,ymax=Inf), color="lightgrey", fill='lightgrey', alpha= 0.1)+
+  scale_color_manual(values = c(tmin = "darkblue", tmax = "firebrick"),
+                     labels = c(tmin = "Min temp", tmax = "Max temp"),
+                     limits = c("tmin", "tmax")) +
+  geom_rect(aes(xmin = 33.5, xmax = 37.5, ymin = -Inf, ymax = Inf), 
+            color = "lightgrey", fill = 'lightgrey', alpha = 0.1) +
   geom_bar(aes(y = totalPrecip), fill = "cornflowerblue", stat = "identity", alpha = 0.7) +
-  geom_line(aes(y = tmax*10),size=1, color = "firebrick3") +
-  geom_point(aes(y = tmax*10), size=2,color="firebrick3") +
-  geom_hline(yintercept=mean_ppt,lty=5,color="cornflowerblue")+
-  geom_hline(yintercept=mean_temp*10,lty=5,color="firebrick3")+
-  scale_y_continuous( expand=c(0,0),
-    name = "Precipitation (mm)",
-    sec.axis = sec_axis(~ ./10, name = "Temperature (\u00B0C)"),
-    limits=c(0,450)
-  ) +
-  scale_x_continuous(n.breaks=13,breaks=c(32,33,34,35,36,37,38,39,40,41,42,43,44,45))+
-  labs(x = "Year") +
+  geom_line(aes(y = tmax * 12.5, color = "tmax"), size = 1) +
+  geom_line(aes(y = tmin * 12.5, color = "tmin"), size = 1) +
+  geom_point(aes(y = tmax * 12.5, color = "tmax"), size = 2) +
+  geom_point(aes(y = tmin * 12.5, color = "tmin"), size = 2) +
+  geom_hline(yintercept = mean_ppt, lty = 5, color = "cornflowerblue") +
+  geom_hline(yintercept = mean_tmin * 12.5, lty = 5, color = "darkblue") +
+  geom_hline(yintercept = mean_tmax * 12.5, lty = 5, color = "firebrick") +
+  scale_y_continuous(expand = c(0, 0),
+                     limits = c(0, 450),
+                     name = "Precipitation (mm)",
+                     sec.axis = sec_axis(~ ./125, name = "Temperature (\u00B0C)", breaks = seq(0, 30, by = 5))) +
+  scale_x_continuous(n.breaks = 13, breaks = c(32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45)) +
+  labs(x = "Year", color = "Average Daily Temp (\u00B0C)") +
   theme_classic() +
   theme(
     axis.title.x = element_text(size = 18),
@@ -125,44 +140,44 @@ combined_plot <- ggplot(climate_data_summary_growing, aes(x = year)) +
     axis.text.y.left = element_text(size = 16),
     axis.text.y.right = element_text(size = 16),
     legend.key.size = unit(0.75, "cm"),
-    legend.title = element_text(size = 18),
-    legend.text = element_text(size = 16),
-    legend.position = c(0.7, 0.5)
+    legend.title = element_text(size = 16),
+    legend.text = element_text(size = 14),
+    legend.position = "bottom"
   ) +
-  geom_text(label="Pre\n drought",
-        x=32.1,
-        y=400,
-        color="black",
-        size=4)+
-  geom_text(label="During\n drought",
-        x=35,
-        y=400,
-        color="black",
-        size=4)+
-  geom_text(label="Post\n drought",
-        x=41,
-        y=400,
-        color="black",
-        size=4) +
-  labs(
-    color = "Temperature",
-    fill = NULL,
-    y = NULL,
-  ) +
-  scale_x_continuous(n.breaks = 13)
+  geom_text(label = "Pre\n drought", x = 32.1, y = 400, color = "black", size = 4) +
+  geom_text(label = "During\n drought", x = 35, y = 400, color = "black", size = 4) +
+geom_text(label = "Post\n drought", x = 41, y = 400, color = "black", size = 4)
 combined_plot
+
 
 ```
 
+
 ```{r}
-jpeg("climate plot growingszn.jpeg",
-     width=15,
+
+image1<-image_read("~/Desktop/concept.png")%>%
+  image_ggplot()
+
+```
+
+
+
+```{r}
+jpeg("two panel climate.jpeg",
+     width=14,
      height=6,
      units="in",
      res=300)
-ggarrange(pptPlot,tempPlot, labels = c("(a)","(b)"))
-dev.off()
+
+conceptualplot <-  
+  ggarrange(relative, combined_plot, labels = c("(a)", "(b)", "(c)"))
+
+conceptualplot
+dev.off()# Adjust height ratios
+
 ```
+
+
 
 ```{r}
 #Import shapefile
@@ -363,7 +378,8 @@ Quadrichnessfig<-ggplot(quadRichness_grazing,aes(year,meanRichness,color=grazing
   geom_point(size=2) +
   geom_line(size=1)+
   scale_x_continuous(n.breaks=13)+
-  scale_y_continuous(limits=c(1,20),breaks=c(0,5,10,15,20))+  scale_color_manual(values=c("#189E77","#D95f02","#7570b3"))+
+  scale_y_continuous(limits=c(1,20),breaks=c(0,5,10,15,20))+  
+  scale_color_manual(values=c("#189E77","#D95f02","#7570b3"), labels=c("High","Moderate","Light"))+
   labs(x="year", y="richness", color="Grazing Rates")+
   theme_classic()+
    theme(axis.title.x =element_text( size=18),
@@ -393,7 +409,7 @@ Pasturerichnessfig<-ggplot(pastureRichness_grazing,aes(year,meanRichness,color=g
   geom_errorbar(aes(ymin=meanRichness-SE, ymax=meanRichness+SE), width=.4)+
   geom_point(size=2) +
   geom_line(size=1)+
-  scale_color_manual(values=c("#189E77","#D95f02","#7570b3"))+
+  scale_color_manual(values=c("#189E77","#D95f02","#7570b3"), labels=c("High","Moderate","Light"))+
   scale_x_continuous(n.breaks=13)+
  # scale_y_continuous(limits=c(10,27))+
   labs(x="year", y="richness", color="Grazing Rates")+
@@ -409,10 +425,10 @@ totalRichnessfig<-ggplot(totalRichness_grazing,aes(year,meanRichness,color=grazi
   geom_rect(aes(xmin=33, xmax=37,ymin=-Inf,ymax=Inf),color="lightgrey", fill='lightgrey', alpha= 0.1)+
   geom_point(size=2) +
   geom_line(size=1)+
-  scale_color_manual(values=c("#189E77","#D95f02","#7570b3"))+
+  scale_color_manual(values=c("#189E77","#D95f02","#7570b3"), labels=c("High","Moderate","Light"))+
   scale_x_continuous(n.breaks=13)+
   scale_y_continuous(limits=c(13,65))+
-  labs(x="year", y="richness", color="Grazing Rates")+
+  labs(x="year", y="Species Richness", color="Grazing Rates")+
   theme_classic()+
    theme(axis.title.x =element_text( size=18),
         axis.title.y = element_text(size=18),
@@ -422,9 +438,9 @@ totalRichnessfig<-ggplot(totalRichness_grazing,aes(year,meanRichness,color=grazi
 totalRichnessfig
 
 #Make one richness figure
-richness_figure<-ggarrange(Quadrichnessfig+rremove("xlab")+rremove("ylab"),Pasturerichnessfig+rremove("xlab")+rremove("ylab"),totalRichnessfig+rremove("ylab")+rremove("xlab"),nrow=3,common.legend =T,labels = c("Quadrant","Pasture","Total"))
+richness_figure<-ggarrange(Quadrichnessfig+rremove("xlab")+rremove("ylab"),Pasturerichnessfig+rremove("xlab")+rremove("ylab"),totalRichnessfig+rremove("ylab")+rremove("xlab"),nrow=3,common.legend =T,labels = c("Quadrat","Pasture","Total"))
 
-annotate_figure(richness_figure, left=text_grob("Richness",rot=90, size=20), bottom=text_grob("Year", size=20))
+annotate_figure(richness_figure, left=text_grob("Species Richness",rot=90, size=20), bottom=text_grob("Year", size=20))
 ```
 
 ```{r}
@@ -435,6 +451,7 @@ totallm<-lm(meanRichness~year,data=totalRichnessMean)
 quadlmfig<-ggplot(quadRichnessMeans,aes(year,meanRichness)) +
   geom_rect(aes(xmin=33, xmax=37,ymin=-Inf,ymax=Inf),color="lightgrey", fill='lightgrey', alpha= 0.1)+
   geom_point(size=.8) +
+  geom_errorbar(aes(ymin=meanRichness-SE, ymax=meanRichness+SE), width=.2)+
   stat_smooth(method="lm",color="black",size=.6)+
   scale_x_continuous(n.breaks=7)+
   scale_y_continuous(limits=c(4,17))+
@@ -444,12 +461,13 @@ quadlmfig<-ggplot(quadRichnessMeans,aes(year,meanRichness)) +
         axis.title.y = element_text(size=8),
         axis.text.x = element_text(size=6,color="black"),
         axis.text.y = element_text(size=6,color="black"))+
-  geom_text(label = paste("p-value =\n ", round(summary(quadlm)$coefficients[2, "Pr(>|t|)"], digits = 3)), x = 35, y = 15,size=3)
+  geom_text(label = paste("P = ", round(summary(quadlm)$coefficients[2, "Pr(>|t|)"], digits = 3)), x = 34, y = 15,size=3)
 quadlmfig
 
 pasturelmfig<-ggplot(pastureRichnessMeans,aes(year,meanRichness)) +
   geom_rect(aes(xmin=33, xmax=37,ymin=-Inf,ymax=Inf),color="lightgrey", fill='lightgrey', alpha= 0.1)+
   geom_point(size=.8) +
+    geom_errorbar(aes(ymin=meanRichness-SE, ymax=meanRichness+SE), width=.2)+
   stat_smooth(method="lm",color="black",size=.6)+
   scale_x_continuous(n.breaks=7)+
   scale_y_continuous(limits=c(8,50))+
@@ -459,7 +477,7 @@ pasturelmfig<-ggplot(pastureRichnessMeans,aes(year,meanRichness)) +
         axis.title.y = element_text(size=8),
         axis.text.x = element_text(size=6,color="black"),
         axis.text.y = element_text(size=6,color="black"))+
-geom_text(label = paste("p-value =\n", round(summary(pasturelm)$coefficients[2, "Pr(>|t|)"], digits = 3)), x = 35, y = 43,size=3)
+geom_text(label = paste("P=", round(summary(pasturelm)$coefficients[2, "Pr(>|t|)"], digits = 3)), x = 34, y = 43,size=3)
 
 pasturelmfig
 
@@ -476,7 +494,7 @@ totallmfig<-ggplot(totalRichnessMean,aes(year,meanRichness)) +
         axis.title.y = element_text(size=8),
         axis.text.x = element_text(size=6,color="black"),
         axis.text.y = element_text(size=6,color="black"))+
-  geom_text(label = paste("p-value =\n ", round(summary(totallm)$coefficients[2, "Pr(>|t|)"], digits = 3)), x = 35, y = 55,size=3)
+  geom_text(label = paste("P=", round(summary(totallm)$coefficients[2, "Pr(>|t|)"], digits = 3)), x =34, y = 55,size=3)
 totallmfig
 ```
 
@@ -492,49 +510,53 @@ richnesInset<-ggdraw() +
   draw_plot(quadlmfig, x = .58, y = .669, width = .39, height = .11)+
   draw_plot(pasturelmfig, x = .58, y = .349, width = .39, height = .11)+
   draw_plot(totallmfig, x = .58, y = .024, width = .39, height = .11)
-richnessInset<-annotate_figure(richnesInset, left=text_grob("Richness",rot=90, size=20), bottom=text_grob("Year", size=20))
+richnessInset<-annotate_figure(richnesInset, left=text_grob("Species Richness",rot=90, size=20), bottom=text_grob("Year", size=20))
 richnessInset
 
 dev.off()
 ```
 
 ```{r}
-quadAOV<-aov(Species~as.factor(year),data=quadRichness)
-summary(quadAOV)
+library(lme4)
+library(lmerTest)
+library(nlme)
 
-pastureAOV<-aov(Species~as.factor(year),data=pastureRichness)
-summary(pastureAOV)
+#Determine statistical significance of year as a main effect
+quadYearmodel <- lmer(Species ~ year + (1 | quad), data = quadRichness)
+summary(quadYearmodel)
 
-totalAOV<-aov(Species~as.factor(year),data=totalRichness)
-summary(totalAOV)
+pastureYearmodel<-lmer(Species ~ year +(1|pasture), data=pastureRichness)
+summary(pastureYearmodel)
 
+totalYearmodel <- lm(Species ~ year, data=totalRichness)
+summary(totalYearmodel)
 
-#Determine statistical significance of grazing rate on richness 
-quadInteraction<-lm(Species ~ year + year:grazing_rates, data = quadRichness)
-anova(quadInteraction)
+#Determine statistical significance of grazing as a main effect
 
-pastureInteraction<-lm(Species ~ year + year:grazing_rates, data = pastureRichness)
-anova(pastureInteraction)
+quadGrazemodel <- lmer(Species ~ grazing_rates + (1 | quad), data = quadRichness)
+anova(quadGrazemodel)
 
-totalInteraction<-lm(Species ~ year + year:grazing_rates, data = totalRichness)
-anova(totalInteraction)
+pastureGrazemodel <- lmer(Species ~ grazing_rates + (1 | pasture), data = pastureRichness)
+anova(pastureGrazemodel)
+
+totalGrazemodel <- lm(Species ~ grazing_rates,  data = totalRichness)
+anova(totalGrazemodel)
 
 #Determine statistical significance of year*grazing_rate interaction
-quadInteractionOV<-aov(Species~grazing_rates*year,data=quadRichness)
-summary(quadInteractionOV)
+quadGrazeInteractionmodel <- lmer(Species ~ grazing_rates*year + (1 | quad), data = quadRichness)
+anova(quadGrazeInteractionmodel)
 
-pastureInteractionAOV<-aov(Species~grazing_rates*year,data=pastureRichness)
-summary(pastureInteractionAOV)
+pastureGrazeInteractionmodel <- lmer(Species ~ grazing_rates*year + (1 | pasture), data = pastureRichness)
+anova(pastureGrazeInteractionmodel)
 
-totalInteractionAOV<-aov(Species~grazing_rates*year,data=totalRichness)
-summary(totalInteractionAOV)
+totalGrazeInteractionmodel <- lm(Species ~ grazing_rates*year,  data = totalRichness)
+anova(totalGrazeInteractionmodel)
 ```
 
 ```{r}
 # Assuming your data is stored in a dataframe called 'data' with columns 'Year' and 'GrazingRate'
 model <- lm(Species ~ year + year:grazing_rates, data = quadRichness)
 anova(model)
-
 ```
 
 **post drought richness**
@@ -635,6 +657,11 @@ Figur4Inset<-ggplot(APrichness_mean,mapping=aes(x=Period,y=mean, fill=Life_histo
         axis.text.y = element_text(size=8,color="black"))+
   geom_text(aes(label = str_trim(cld.postrichnessAP$.group),y = mean+SE + .5), position = position_dodge(width = 0.9), size=2.5)
 ```
+
+```{r}
+
+```
+
 
 ```{r}
 #Export figure 4 
@@ -744,18 +771,24 @@ geom_line(data = subset(proportionlost_long, grazing_rates == 3.2), size = 1.25,
            aes(x = counts_categories, y = value, linetype = ifelse(year == "proportion33", "solid", 
                                                                    ifelse(year=="proportion36","dotted","dashed"))))+ 
   scale_x_continuous(breaks = c(1, 2, 3, 4, 5, 6), 
-                     labels=c("1" , "49.5" , "98" ,"146.5", "195", "243.5")) +
+                     labels=c("1" , "49" , "98" ,"146", "195", "243")) +
   scale_color_manual(values = c("#293353", "#52854C", "#D16103","#C4961A","#CD77D5","#2FBBD6"), 
                      labels = c("1933","1934", "1935","1936", "1937", "1945")) +
   labs(color = "Year",
        x = "Counts Category",
        y = "Proportion Lost") +
   facet_wrap(~ grazing_rates, scales = "free", ncol = 1, labeller = labeller(grazing_rates = c("1.9" = "Low", "2.5" = "Medium", "3.2" = "High"))) +
- 
   theme_classic()+
-   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+   theme(axis.text.x = element_text(hjust = 1),
         legend.position = "blank") +
-  scale_linetype(guide="none")
+  scale_linetype(guide="none")+
+  theme(axis.title.x =element_text( size=15),
+        axis.title.y = element_text(size=15),
+        axis.text.x = element_text(size=12,color="black"),
+        axis.text.y = element_text(size=12,color="black"),
+      legend.text = element_text(size=12),
+        legend.title = element_text(size=12),
+      strip.text = element_text(size = 12))
  propLostfigCOUNTS
 
 ```
@@ -823,22 +856,28 @@ max(plot_data_count$PredictedProbability)
 # Create the logistic regression plot (Figure 4 inset)
 countfig<-ggplot(plot_data_count, aes(x = abundance, y = PredictedProbability, color=year)) +
   #scale_y_continuous(expand=c(0,0),limits=c(0,.5))+
-  scale_x_continuous(expand=c(0,0),limits=c(0,125))+ 
+  scale_x_continuous(expand=c(0,0),limits=c(0,115))+ 
   scale_color_manual(values = c("#293353", "#52854C", "#D16103","#C4961A","#CD77D5"), 
                      labels = c("1933","1934", "1935","1936", "1937")) +
   geom_line(size=1.5) +
   labs(x = "Initial Abundance (Counts)",
-       y = "Predicted Probability of local extinction") +
+       y = "Predicted Probability of local species loss") +
   theme_classic()+
-  theme(legend.position = c(.52,.5),
-        legend.direction = "horizontal",)
+  theme(legend.position = c(.54,.5),
+        legend.direction = "horizontal")+
+theme(axis.title.x =element_text( size=15),
+        axis.title.y = element_text(size=15),
+        axis.text.x = element_text(size=12,color="black"),
+        axis.text.y = element_text(size=12,color="black"),
+      legend.text = element_text(size=12),
+        legend.title = element_text(size=12))
 countfig
 ```
 
 **Previous yr model BASAL**
 ```{r}
 #Import previously analysize data from plant tracker function with basla area
-setwd("~/Desktop/rds")
+setwd("~/OneDrive - Montana State University/rds")
 tracked<-readRDS("tracked.rds")
 
 initial_basal<-tracked%>%
@@ -930,7 +969,13 @@ basalfigREG<-ggplot(plot_data_Basal, aes(x = abundance, y = PredictedProbability
         axis.title.x = element_text(size = 8),
         axis.text.y = element_text(size = 6),
         axis.text.x = element_text(size = 6))+
-  annotate("text", x = -.000001, y = .6, label = "C")
+  annotate("text", x = -.000001, y = .6, label = "C")+
+  theme(axis.title.x =element_text( size=15),
+        axis.title.y = element_text(size=15),
+        axis.text.x = element_text(size=12,color="black"),
+        axis.text.y = element_text(size=12,color="black"),
+      legend.text = element_text(size=10),
+        legend.title = element_text(size=10))
 basalfigREG
 ```
 
@@ -938,7 +983,7 @@ basalfigREG
 #Arrange and export figure 2 
 main_plot<-ggarrange(propLostfigCOUNTS,countfig,labels=c("(a)","(b)"),font.label = list(size = 12),ncol=2,hjust=.001,widths=c(.6,1))
 
-jpeg("three panel local extinction.jpeg",
+jpeg("Dust bowl figure 2.jpeg",
     width=10,
      height=5,
      units="in",
@@ -975,6 +1020,12 @@ cover_datameans<-cover_datameans%>%
   summarise_at(vars(summed_cover),
                list(meanCover=mean,
                     SE=std.error))
+
+
+coverrandomness<-cover_datameans%>%
+  group_by(year)%>%
+  summarise_at(vars(meanCover),
+               list(mean))
 
 #plot cover through time
 coverplot<-ggplot(cover_datameans,aes(year,meanCover,color=grazing_rates)) +
@@ -1013,17 +1064,14 @@ coverplot
 
 
 ```{r}
-cover_datameans$year<-as.character(cover_datameans$year)
+covermodel <- lmer(summed_cover ~ year + (1 | quad), data=cover_datameans)
+anova(covermodel)
 
-coverlm<-lm(meanCover~year, data=cover_datameans)
-summary(coverlm)
 ```
 
 
 ```{r}
 #Calculate ratio between annuals and perennials 
-cover_data2
-unique(APdata$Life_history)
 
 APdata<-countsdata%>%
   drop_na(Life_history)%>%
@@ -1085,4 +1133,8 @@ ggarrange(coverplot,APfigure, common.legend=T,labels=c("(a)","(b)"))
 dev.off()
 ```
 
+```{r}
+annualModel <- lmer(a_p_ratio ~ year + (1 | quad), data = APdatawide)
+anova(annualModel)
+```
 
