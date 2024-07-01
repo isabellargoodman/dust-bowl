@@ -139,7 +139,7 @@ relative<-ggplot() +
   geom_polygon(data=states_all_sites, mapping=aes(x = long, y = lat, group=group),
                color = "black", linewidth = 0.1,fill=NA)+
   geom_point(coords, mapping=aes(x=X,y=Y),color="black", size=5,shape=18)+
-  scale_fill_distiller(palette="YlOrRd",direction=-1,limits=c(-40,0),oob=scales::squish)+
+  scale_fill_distiller(palette="YlOrRd",direction=-1,limits=c(-45,0),oob=scales::squish)+
     theme(
     axis.title.x = element_blank(),
     axis.title.y = element_blank(),
