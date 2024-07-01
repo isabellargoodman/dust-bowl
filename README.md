@@ -2,7 +2,8 @@
 
 Code for 'Lessons from the dustbowl: Transient biodiversity dynamics due to prolonged drought select for annual plant life histories. '
 
-# Step one: run analyses
+# Step-1: run main analyses
+
 dust bowl main figures and analysis.Rmd : main analysis for the paper
 
 
