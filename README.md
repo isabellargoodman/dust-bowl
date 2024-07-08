@@ -8,6 +8,8 @@ dust bowl main figures and analysis.Rmd : main analysis for the paper
 
 PlantTracker.Rmd : Analysis used to calculate basal are using plant tracker package 
 
+prissm.Rmd : Uploading prism data and creating fig 2a. 
+
 
 # Step two: supporting analyses and figures 
 supportinng dust bowl figures.Rmd : supporting analysis and figures
