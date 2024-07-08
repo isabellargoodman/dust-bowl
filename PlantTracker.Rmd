@@ -6,7 +6,6 @@ date: "2024-05-30"
 
 ```{r setup, include=FALSE}
 #Import needed datasets and clean
-
 setwd("~/Desktop/dust bowl/data")
 species_list <- read.csv("species_list.csv")
 cover_data <- read.csv("allrecords_cover.csv")

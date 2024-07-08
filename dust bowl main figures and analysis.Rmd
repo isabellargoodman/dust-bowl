@@ -876,7 +876,8 @@ countfig
 
 **Previous yr model BASAL**
 ```{r}
-#Import previously analysize data from plant tracker function with basla area
+#Import previously analysized data from plant tracker function with basal area
+
 setwd("~/OneDrive - Montana State University/rds")
 tracked<-readRDS("tracked.rds")
 
