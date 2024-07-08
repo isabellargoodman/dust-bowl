@@ -5,7 +5,8 @@ Code for 'Lessons from the dustbowl: Transient biodiversity dynamics due to prol
 # Step-1: run main analyses
 
 dust bowl main figures and analysis.Rmd : main analysis for the paper
-PlantTracker.Rmd<- Analysis used to calculate basal are using plant tracker package 
+
+PlantTracker.Rmd : Analysis used to calculate basal are using plant tracker package 
 
 
 # Step two: supporting analyses and figures 
